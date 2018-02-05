@@ -15,6 +15,7 @@ class Mutex {
   ~Mutex();
 
   void Lock();
+  int Trylock();
   void Unlock();
   void AssertHeld() { }
 

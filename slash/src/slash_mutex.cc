@@ -38,6 +38,11 @@ void Mutex::Lock() {
   PthreadCall("lock", pthread_mutex_lock(&mu_)); 
 }
 
+int Mutex::Trylock() { 
+  //if lock return 0; else return errorno
+  return pthread_mutex_trylock(&mu_);
+}
+
 void Mutex::Unlock() { 
   PthreadCall("unlock", pthread_mutex_unlock(&mu_)); 
 }
@@ -68,7 +73,11 @@ void RWMutex::ReadUnlock() {
 
 CondVar::CondVar(Mutex* mu)
   : mu_(mu) {
-    PthreadCall("init cv", pthread_cond_init(&cv_, NULL));
+    pthread_condattr_t condattr;
+    PthreadCall("pthread_condattr_init", pthread_condattr_init(&condattr));
+    PthreadCall("pthread_condattr_setclock", pthread_condattr_setclock(&condattr, CLOCK_MONOTONIC));
+    PthreadCall("init cv", pthread_cond_init(&cv_, &condattr));
+    PthreadCall("pthread_condattr_destroy", pthread_condattr_destroy(&condattr));
   }
 
 CondVar::~CondVar() { 
@@ -83,15 +92,14 @@ void CondVar::Wait() {
 bool CondVar::TimedWait(uint32_t timeout) {
   /*
    * pthread_cond_timedwait api use absolute API
-   * so we need gettimeofday + timeout
+   * so we need clock_gettime + timeout
    */
-  struct timeval now;
-  gettimeofday(&now, NULL);
   struct timespec tsp;
+  clock_gettime(CLOCK_MONOTONIC, &tsp);
 
-  int64_t usec = now.tv_usec + timeout * 1000LL;
-  tsp.tv_sec = now.tv_sec + usec / 1000000;
-  tsp.tv_nsec = (usec % 1000000) * 1000;
+  int64_t nsec = tsp.tv_nsec + timeout * 1000000LL;
+  tsp.tv_sec = tsp.tv_sec + nsec / 1000000000;
+  tsp.tv_nsec = nsec % 1000000000;
 
   return PthreadTimeoutCall("timewait",
       pthread_cond_timedwait(&cv_, &mu_->mu_, &tsp));
